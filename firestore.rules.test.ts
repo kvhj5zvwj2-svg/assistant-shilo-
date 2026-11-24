@@ -1,0 +1,96 @@
+/**
+ * Suite de vérification conceptuelle "Dirty Dozen" pour Assistant Shilo.
+ * Vérifie que chaque vecteur d'attaque est rejeté par firestore.rules.
+ */
+export const dirtyDozenCases = [
+  {
+    name: '1. Usurpation UID sur profil utilisateur',
+    path: '/users/victim_uid',
+    operation: 'create',
+    auth: { uid: 'attacker_uid', token: { email_verified: true } },
+    payload: { uid: 'attacker_uid', displayName: 'Attacker', email: 'a@test.com', roleType: 'citoyen', preferredDomain: 'rdc' },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    name: '2. Shadow Update avec champ fantôme isAdmin',
+    path: '/users/user_1',
+    operation: 'update',
+    auth: { uid: 'user_1', token: { email_verified: true } },
+    payload: { isAdmin: true, displayName: 'Test' },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    name: '3. Email non vérifié',
+    path: '/users/user_1/conversations/conv_1',
+    operation: 'create',
+    auth: { uid: 'user_1', token: { email_verified: false } },
+    payload: { id: 'conv_1', userId: 'user_1', title: 'Test', mode: 'consultation', jurisdiction: 'rdc' },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    name: '4. Lecture PII d un autre utilisateur',
+    path: '/users/other_user',
+    operation: 'get',
+    auth: { uid: 'user_1', token: { email_verified: true } },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    name: '5. Listage global des utilisateurs',
+    path: '/users',
+    operation: 'list',
+    auth: { uid: 'user_1', token: { email_verified: true } },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    name: '6. Injection ID invalide',
+    path: '/users/user_1/conversations/bad$id',
+    operation: 'create',
+    auth: { uid: 'user_1', token: { email_verified: true } },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    name: '7. Falsification de timestamp createdAt',
+    path: '/users/user_1/conversations/conv_1',
+    operation: 'create',
+    auth: { uid: 'user_1', token: { email_verified: true } },
+    payload: { createdAt: '2020-01-01T00:00:00Z' },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    name: '8. Modification de champ immuable userId',
+    path: '/users/user_1/conversations/conv_1',
+    operation: 'update',
+    auth: { uid: 'user_1', token: { email_verified: true } },
+    payload: { userId: 'user_2' },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    name: '9. Message orphelin sans conversation parente',
+    path: '/users/user_1/conversations/missing_conv/messages/msg_1',
+    operation: 'create',
+    auth: { uid: 'user_1', token: { email_verified: true } },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    name: '10. Payload géant > 40000 caractères',
+    path: '/users/user_1/conversations/conv_1/messages/msg_1',
+    operation: 'create',
+    auth: { uid: 'user_1', token: { email_verified: true } },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    name: '11. Liste sources > 15 éléments',
+    path: '/users/user_1/conversations/conv_1/messages/msg_1',
+    operation: 'create',
+    auth: { uid: 'user_1', token: { email_verified: true } },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    name: '12. Valeur roleType hors énumération',
+    path: '/users/user_1',
+    operation: 'create',
+    auth: { uid: 'user_1', token: { email_verified: true } },
+    payload: { roleType: 'superadmin' },
+    expected: 'PERMISSION_DENIED',
+  },
+];

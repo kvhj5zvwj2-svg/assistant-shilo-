@@ -1,0 +1,150 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Filet de sécurité global (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Primitives globales durcies
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+    function isOwner(userId) {
+      return isVerified() && request.auth.uid == userId;
+    }
+
+    // 3. Helpers de validation stricts (Anti-Update-Gap)
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'roleType', 'preferredDomain', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'email', 'roleType', 'preferredDomain', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == userId && data.uid == request.auth.uid && isValidId(data.uid)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.roleType in ['etudiant', 'juriste', 'avocat', 'entrepreneur', 'citoyen']
+        && data.preferredDomain in ['rdc', 'ohada', 'comparatif', 'francais']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidConversation(data, userId, conversationId) {
+      return data.keys().hasAll(['id', 'userId', 'title', 'mode', 'jurisdiction', 'messageCount', 'lastPreview', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'userId', 'title', 'mode', 'jurisdiction', 'messageCount', 'lastPreview', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id == conversationId && isValidId(data.id)
+        && data.userId is string && data.userId == userId && data.userId == request.auth.uid && isValidId(data.userId)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.mode in ['consultation', 'dissertation', 'cas_pratique', 'commentaire_arret', 'expose']
+        && data.jurisdiction in ['rdc', 'ohada', 'comparatif', 'francais']
+        && data.messageCount is int && data.messageCount >= 0 && data.messageCount <= 5000
+        && data.lastPreview is string && data.lastPreview.size() <= 300
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSourceList(sources) {
+      return sources is list
+        && sources.size() <= 15
+        && (
+          sources.size() == 0
+          || (
+            sources[0] is map
+            && sources[0].keys().hasAll(['title', 'uri'])
+            && sources[0].keys().hasOnly(['title', 'uri'])
+            && sources[0].title is string && sources[0].title.size() <= 300
+            && sources[0].uri is string && sources[0].uri.size() <= 1000
+          )
+        );
+    }
+
+    function isValidLegalMessage(data, userId, conversationId, messageId) {
+      return data.keys().hasAll(['id', 'userId', 'conversationId', 'role', 'content', 'jurisdiction', 'mode', 'sources', 'verifiedStatus', 'createdAt'])
+        && data.keys().hasOnly(['id', 'userId', 'conversationId', 'role', 'content', 'jurisdiction', 'mode', 'sources', 'verifiedStatus', 'createdAt'])
+        && data.id is string && data.id == messageId && isValidId(data.id)
+        && data.userId is string && data.userId == userId && data.userId == request.auth.uid && isValidId(data.userId)
+        && data.conversationId is string && data.conversationId == conversationId && isValidId(data.conversationId)
+        && data.role in ['user', 'assistant']
+        && data.content is string && data.content.size() >= 1 && data.content.size() <= 40000
+        && data.jurisdiction in ['rdc', 'ohada', 'comparatif', 'francais']
+        && data.mode in ['consultation', 'dissertation', 'cas_pratique', 'commentaire_arret', 'expose']
+        && isValidSourceList(data.sources)
+        && data.verifiedStatus in ['verifie', 'partiel', 'non_verifie', 'utilisateur']
+        && data.createdAt is timestamp;
+    }
+
+    // 4. Profils utilisateurs (PII strictement isolée au propriétaire)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'roleType', 'preferredDomain', 'updatedAt']);
+      allow delete: if false;
+
+      // 5. Conversations de l'utilisateur
+      match /conversations/{conversationId} {
+        allow get: if isValidId(userId) && isValidId(conversationId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId) && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(conversationId)
+          && isOwner(userId)
+          && isValidConversation(incoming(), userId, conversationId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow update: if isValidId(userId)
+          && isValidId(conversationId)
+          && isOwner(userId)
+          && isValidConversation(incoming(), userId, conversationId)
+          && incoming().id == existing().id
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly(['title', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['messageCount', 'lastPreview', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['title', 'messageCount', 'lastPreview', 'updatedAt'])
+          );
+        allow delete: if isValidId(userId) && isValidId(conversationId) && isOwner(userId);
+
+        // 6. Messages de la conversation (Master Gate sur la conversation parente)
+        match /messages/{messageId} {
+          allow get: if isValidId(userId) && isValidId(conversationId) && isValidId(messageId) && isOwner(userId);
+          allow list: if isValidId(userId) && isValidId(conversationId) && isOwner(userId) && resource.data.userId == request.auth.uid;
+          allow create: if isValidId(userId)
+            && isValidId(conversationId)
+            && isValidId(messageId)
+            && isOwner(userId)
+            && isValidLegalMessage(incoming(), userId, conversationId, messageId)
+            && incoming().createdAt == request.time
+            && exists(/databases/$(database)/documents/users/$(userId)/conversations/$(conversationId))
+            && get(/databases/$(database)/documents/users/$(userId)/conversations/$(conversationId)).data.userId == request.auth.uid;
+          allow update: if false;
+          allow delete: if isValidId(userId) && isValidId(conversationId) && isValidId(messageId) && isOwner(userId);
+        }
+      }
+    }
+  }
+}

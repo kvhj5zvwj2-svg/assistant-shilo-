@@ -1,0 +1,155 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Profil personnel de l'utilisateur d'Assistant Shilo (PII isolée par propriétaire).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 200
+        },
+        "roleType": {
+          "type": "string",
+          "enum": ["etudiant", "juriste", "avocat", "entrepreneur", "citoyen"]
+        },
+        "preferredDomain": {
+          "type": "string",
+          "enum": ["rdc", "ohada", "comparatif", "francais"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "email", "roleType", "preferredDomain", "createdAt", "updatedAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Fil de discussion juridique ou exercice académique appartenant à un utilisateur.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["consultation", "dissertation", "cas_pratique", "commentaire_arret", "expose"]
+        },
+        "jurisdiction": {
+          "type": "string",
+          "enum": ["rdc", "ohada", "comparatif", "francais"]
+        },
+        "messageCount": {
+          "type": "integer"
+        },
+        "lastPreview": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "userId", "title", "mode", "jurisdiction", "messageCount", "lastPreview", "createdAt", "updatedAt"]
+    },
+    "LegalMessage": {
+      "title": "LegalMessage",
+      "description": "Message individuel (question ou réponse juridique structurée avec sources) dans une conversation.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "conversationId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "assistant"]
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40000
+        },
+        "jurisdiction": {
+          "type": "string",
+          "enum": ["rdc", "ohada", "comparatif", "francais"]
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["consultation", "dissertation", "cas_pratique", "commentaire_arret", "expose"]
+        },
+        "sources": {
+          "type": "array",
+          "description": "Sources web et références vérifiables citées (max 15)."
+        },
+        "verifiedStatus": {
+          "type": "string",
+          "enum": ["verifie", "partiel", "non_verifie", "utilisateur"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "userId", "conversationId", "role", "content", "jurisdiction", "mode", "sources", "verifiedStatus", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Profil utilisateur privé (email et préférences juridiques)."
+    },
+    "/users/{userId}/conversations/{conversationId}": {
+      "schema": { "$ref": "#/entities/Conversation" },
+      "description": "Historique des conversations juridiques de l'utilisateur."
+    },
+    "/users/{userId}/conversations/{conversationId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/LegalMessage" },
+      "description": "Messages d'une conversation juridique."
+    }
+  }
+}

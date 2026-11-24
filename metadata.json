@@ -1,0 +1,6 @@
+{
+  "name": "Assistant Shilo",
+  "description": "Assistant juridique intelligent gratuit dédié au droit de la République démocratique du Congo (RDC), au droit OHADA et au droit comparé, pour étudiants, juristes, avocats, entrepreneurs et citoyens.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
